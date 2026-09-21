@@ -21,12 +21,18 @@ load File.join(File.dirname(__FILE__), "drawkit.rb")
 
 # ---- 치수표 (사용자 확인 완료본을 그대로 옮긴다) ---------------------------
 # ID / 부재명 / 원점 X,Y,Z / 크기 W×D×H
+# 주의: name 은 검증 키이므로 부재마다 고유해야 한다 (C1-1, C1-2 …).
 PARTS = [
   # { name: "C1-기둥",  x: 0,    y: 0,    z: 0,    w: 500,  d: 500,  h: 3000 },
   # { name: "G1-큰보",  x: 500,  y: 0,    z: 2400, w: 5000, d: 400,  h: 600  },
 ]
 
 # ---- 생성 -----------------------------------------------------------------
+raise "치수표(PARTS)가 비어 있다. 확정된 치수표를 옮겨 넣을 것." if PARTS.empty?
+
+dups = PARTS.map { |p| p[:name] }.tally.select { |_, c| c > 1 }
+raise "부재명 중복: #{dups.keys.join(', ')} — 고유한 이름으로 수정할 것." unless dups.empty?
+
 DrawKit.build("모델 생성 - [프로젝트명]") do |model|
   PARTS.each { |p| DrawKit.box(**p) }
 end

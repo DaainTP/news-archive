@@ -26,7 +26,7 @@
 
 - 모든 좌표·치수는 **mm**로 쓰고 DrawKit을 통해 변환한다. 생 숫자는 인치로 해석된다.
 - `pushpull` 직전에 `f.reverse! if f.normal.z < 0` (DrawKit 내부에서 처리됨).
-- 모든 그룹에 `g.name` 을 부여한다. 이름이 곧 audit/verify 의 키다.
+- 모든 그룹에 `g.name` 을 부여하되 **부재마다 고유한 이름**을 쓴다(C1-1, C1-2 …). 이름이 곧 audit/verify 의 키라, 중복되면 대조가 불가능하다.
 - 부재가 많으면 논리 단위(본체/서랍/하드웨어, 또는 층별/공종별)로 `DrawKit.assembly` 하위에 묶는다.
 - 한 파일이 커지면 `build_1_구조.rb`, `build_2_마감.rb` 처럼 나누되, 각 파일은 독립 실행 가능해야 한다.
 
@@ -37,3 +37,9 @@
 - `DrawKit.build`(= `start_operation`) 없이 대량 생성
 - `audit` / `verify` 검증 생략
 - 도면에서 확인되지 않은 치수를 임의로 채워 넣기
+- 같은 이름의 그룹 2개 이상 생성
+
+## drawkit.rb 를 수정했을 때
+
+`ruby tools/sketchup/test/test_drawkit.rb` 를 돌려 전체 통과를 확인한 뒤 전달한다.
+(SketchUp 없이 `tools/sketchup/test/su_stub.rb` 로 좌표·검증 로직만 검사한다)

@@ -121,32 +121,53 @@ module DrawKit
 
   # ---------- 검증 ----------
 
-  # 생성된 그룹의 실제 바운딩박스를 mm 로 뽑아 치수표와 대조할 수 있게 출력한다.
-  # groups 를 생략하면 모델 최상위 그룹 전체를 대상으로 한다.
-  def self.audit(groups = nil, model: Sketchup.active_model)
-    groups ||= model.entities.grep(Sketchup::Group)
-    groups = [groups] unless groups.is_a?(Array)
+  # 모델 안의 모든 그룹을 재귀적으로 수집한다. assembly 하위 부재도 빠짐없이 잡기 위함.
+  # 반환: [[group, depth], ...]
+  def self.collect_groups(ents, depth = 0, acc = [])
+    ents.grep(Sketchup::Group).each do |g|
+      acc << [g, depth]
+      collect_groups(g.entities, depth + 1, acc)
+    end
+    acc
+  end
 
-    rows = groups.flatten.compact.map do |g|
+  # 생성된 그룹의 실제 바운딩박스를 mm 로 뽑아 치수표와 대조할 수 있게 출력한다.
+  # groups 를 생략하면 모델 전체(중첩 포함)를 대상으로 한다.
+  def self.audit(groups = nil, model: Sketchup.active_model)
+    pairs = if groups
+              Array(groups).flatten.compact.map { |g| [g, 0] }
+            else
+              collect_groups(model.entities)
+            end
+
+    rows = pairs.map do |g, depth|
       bb = g.bounds
       {
         name: g.name.to_s,
+        depth: depth,
         origin: [to_mm(bb.min.x), to_mm(bb.min.y), to_mm(bb.min.z)],
         size:   [to_mm(bb.width), to_mm(bb.height), to_mm(bb.depth)]
       }
     end
 
-    puts "%-28s %-24s %s" % ["부재명", "원점 X,Y,Z (mm)", "크기 W×D×H (mm)"]
-    puts "-" * 80
+    puts "%-30s %-24s %s" % ["부재명", "원점 X,Y,Z (mm)", "크기 W×D×H (mm)"]
+    puts "-" * 84
     rows.each do |r|
-      puts "%-28s %-24s %s" % [
-        r[:name],
+      puts "%-30s %-24s %s" % [
+        ("  " * r[:depth]) + r[:name],
         r[:origin].join(", "),
         r[:size].join(" × ")
       ]
     end
-    puts "-" * 80
+    puts "-" * 84
     puts "부재 수: #{rows.size}"
+
+    dups = rows.map { |r| r[:name] }.tally.select { |_, c| c > 1 }
+    unless dups.empty?
+      puts "경고: 그룹 이름 중복 → " + dups.map { |n, c| "#{n}(#{c}개)" }.join(", ")
+      puts "      이름이 검증 키이므로 C1-1, C1-2 처럼 고유하게 부여할 것."
+    end
+
     rows
   end
 
@@ -154,25 +175,34 @@ module DrawKit
   # expected: [{name:, origin:[x,y,z], size:[w,d,h]}, ...]
   def self.verify(expected, tol: 0.5, model: Sketchup.active_model)
     actual = audit(nil, model: model)
-    index = actual.each_with_object({}) { |r, h| h[r[:name]] = r }
+    counts = actual.map { |r| r[:name] }.tally
+    index = actual.each_with_object({}) { |r, h| h[r[:name]] ||= r }
 
     bad = []
     expected.each do |e|
-      a = index[e[:name]]
-      if a.nil?
-        bad << { name: e[:name], reason: "생성되지 않음" }
+      name = e[:name]
+
+      if counts[name].to_i > 1
+        bad << { name: name, reason: "이름이 #{counts[name]}개 중복되어 대조 불가 — 고유한 이름으로 재생성할 것" }
         next
       end
+
+      a = index[name]
+      if a.nil?
+        bad << { name: name, reason: "생성되지 않음" }
+        next
+      end
+
       diff = []
       3.times do |i|
         diff << "원점#{%w[X Y Z][i]} 기대 #{e[:origin][i]} / 실제 #{a[:origin][i]}" if (e[:origin][i] - a[:origin][i]).abs > tol
         diff << "크기#{%w[W D H][i]} 기대 #{e[:size][i]} / 실제 #{a[:size][i]}"     if (e[:size][i]   - a[:size][i]).abs   > tol
       end
-      bad << { name: e[:name], reason: diff.join(" | ") } unless diff.empty?
+      bad << { name: name, reason: diff.join(" | ") } unless diff.empty?
     end
 
     if bad.empty?
-      puts "검증 통과: 치수표와 모델이 모두 일치 (허용오차 #{tol}mm)"
+      puts "검증 통과: 치수표 #{expected.size}개 부재가 모두 일치 (허용오차 #{tol}mm)"
     else
       puts "검증 실패 #{bad.size}건:"
       bad.each { |b| puts "  - #{b[:name]}: #{b[:reason]}" }
