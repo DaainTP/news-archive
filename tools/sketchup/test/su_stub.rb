@@ -164,6 +164,15 @@ module Sketchup
     def save(path); @saved_path = path; true; end
   end
 
+  # 설치 스크립트 테스트용
+  def self.version; @version || "23.0.419"; end
+  def self.version=(v); @version = v; end
+  def self.find_support_file(name)
+    @support_files ||= {}
+    @support_files[name]
+  end
+  def self.set_support_file(name, path); (@support_files ||= {})[name] = path; end
+
   def self.active_model; @model ||= Model.new; end
   def self.reset_model!; @model = Model.new; end
 end

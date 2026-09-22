@@ -2,18 +2,33 @@
 
 부재별 왕복 없이, **블록 하나 = 모델 하나**로 생성합니다.
 
-## 최초 1회 설치
+## 최초 1회 설치 (자동)
 
-`drawkit.rb` 를 SketchUp **Plugins 폴더**에 복사한 뒤 SketchUp을 재시작합니다.
-(Plugins 폴더의 `.rb` 는 시작 시 자동으로 읽힙니다)
+폴더를 찾을 필요 없습니다. 설치 스크립트가 SketchUp 버전에 맞는 위치를 스스로 찾습니다.
 
-- Windows: `C:\Users\<사용자>\AppData\Roaming\SketchUp\SketchUp 20XX\SketchUp\Plugins`
-- macOS: `~/Library/Application Support/SketchUp 20XX/SketchUp/Plugins`
+1. `install_drawkit.rb` 를 **다운로드 폴더**(또는 바탕화면)에 저장
+2. SketchUp → 상단 메뉴 **[창(Window)] → [Ruby 콘솔(Ruby Console)]**
+3. 아래 **한 줄**을 콘솔 입력칸에 붙여넣고 Enter
 
-확인: `창 → Ruby 콘솔` 에서 `defined?(DrawKit)` → `"constant"` 가 나오면 완료.
+```ruby
+f0=%w[Downloads Desktop 바탕화면].map{|d| File.join(ENV['USERPROFILE']||ENV['HOME'],d,'install_drawkit.rb')}.find{|f| File.exist?(f)}; f0 ? load(f0) : puts("install_drawkit.rb 를 다운로드 폴더나 바탕화면에 두고 다시 실행하세요")
+```
 
-> 설치가 번거로우면 건너뛰어도 됩니다. 그 경우 `drawkit.rb` 내용을 콘솔에 한 번
-> 붙여넣으면 그 세션 동안 유효합니다(SketchUp을 끄면 사라집니다).
+이렇게 나오면 완료입니다.
+
+```
+설치 완료
+  위치: C:/Users/…/AppData/Roaming/SketchUp/SketchUp 2025/SketchUp/Plugins/drawkit.rb
+  버전: DrawKit 2.0
+```
+
+재시작 없이 바로 쓸 수 있고, SketchUp 을 껐다 켜도 유지됩니다.
+
+> 위 한 줄이 "파일을 찾을 수 없다"고 하면, `install_drawkit.rb` 를 메모장으로 열어
+> **내용 전체**를 콘솔에 붙여넣어도 동일하게 설치됩니다.
+>
+> 설치 자체가 실패하면 스크립트가 시도한 경로 목록을 출력합니다. 그 목록을 그대로
+> 알려주시면 해당 환경에 맞게 잡아드립니다.
 
 ## 매 작업
 
@@ -50,8 +65,14 @@ SketchUp 없이 로직만 검사합니다. `drawkit.rb` 를 고쳤다면 먼저 
 ruby tools/sketchup/test/test_drawkit.rb
 ```
 
-검사 항목: 자동 검증, 중첩 group, 부재명 중복 차단, 크기 0 차단, **오류 시 롤백**,
-원기둥 근사 허용오차, 임의 단면 압출, 검증 통과 시에만 저장.
+```bash
+ruby tools/sketchup/test/test_installer.rb
+```
+
+검사 항목 — `test_drawkit.rb`: 자동 검증, 중첩 group, 부재명 중복 차단, 크기 0 차단,
+**오류 시 롤백**, 원기둥 근사 허용오차, 임의 단면 압출, 검증 통과 시에만 저장.
+`test_installer.rb`: 폴더 자동 탐색, 폴더 없을 때 생성, 쓸 수 없는 경로 회피,
+Windows/macOS 경로, 설치 직후 즉시 사용 가능 여부.
 
 > 좌표·치수·검증 로직만 확인합니다. 면 병합·교차 처리·재질 적용 등 SketchUp 고유
 > 동작은 실제 SketchUp에서 확인해야 합니다.

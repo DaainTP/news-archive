@@ -11,7 +11,8 @@
 - SketchUp MCP(`eval_ruby`)가 붙어 있으면 → 블록 전체를 **1회 호출**로 보낸다.
 - 없으면 → 코드 블록을 그대로 주고 사용자가 Ruby 콘솔에 **붙여넣는다**. 파일 저장 불필요.
 
-`drawkit.rb`는 Plugins 폴더에 **최초 1회만** 설치한다(`tools/sketchup/README.md`). 이후 매 작업에서 전달하는 것은 치수 블록뿐이다.
+`drawkit.rb`는 **최초 1회만** 설치한다. 사용자가 폴더를 찾을 필요 없도록
+`tools/sketchup/install_drawkit.rb`(자동 설치 스크립트)를 쓴다. 설치 절차는 `tools/sketchup/README.md`. 이후 매 작업에서 전달하는 것은 치수 블록뿐이다.
 
 ## 절차 (3단계)
 
@@ -50,6 +51,8 @@ end
 
 ## drawkit.rb 를 수정했을 때
 
-`ruby tools/sketchup/test/test_drawkit.rb` 로 전체 통과를 확인한 뒤 전달한다.
+`ruby tools/sketchup/test/test_drawkit.rb` 와 `ruby tools/sketchup/test/test_installer.rb`
+둘 다 전체 통과를 확인한 뒤 전달한다. `drawkit.rb` 를 고치면 `install_drawkit.rb` 안에
+박혀 있는 사본도 함께 갱신해야 한다(`test_installer.rb` 가 원본과 동일한지 검사한다).
 SketchUp 구버전(Ruby 2.x)에서도 돌아가야 하므로 endless method(`def f = ...`),
 `tally`, `&.` 등 Ruby 3.x 전용 문법을 쓰지 않는다.
