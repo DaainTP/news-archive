@@ -3,102 +3,101 @@
 require_relative "su_stub"
 load File.expand_path("../drawkit.rb", __dir__)
 
-def case_title(t)
-  puts "\n=== #{t} ==="
-end
-
-fail_count = 0
+$fails = 0
+def title(t); puts "\n=== #{t} ==="; end
 def check(label, cond)
   puts((cond ? "  [OK]   " : "  [FAIL] ") + label)
+  $fails += 1 unless cond
   cond
 end
 
-# ---------------------------------------------------------------- 1. 기본 박스
-case_title "1. 단위 환산 / 기본 박스 (500×500×3000mm 기둥)"
-PARTS = [
-  { name: "C1-기둥",   x: 0,    y: 0,    z: 0,    w: 500,  d: 500,  h: 3000 },
-  { name: "C2-기둥",   x: 5000, y: 0,    z: 0,    w: 500,  d: 500,  h: 3000 },
-  { name: "G1-큰보",   x: 500,  y: 0,    z: 2400, w: 4500, d: 400,  h: 600  },
-  { name: "SLAB-1",    x: 0,    y: 0,    z: 3000, w: 5500, d: 3000, h: 150  }
-]
-
-DrawKit.build("테스트 모델") do |_m|
-  PARTS.each { |p| DrawKit.box(**p) }
+# ---------------------------------------------------------------- 1
+title "1. 기본 생성 + 자동 검증 (치수표를 따로 안 적어도 되는가)"
+Sketchup.reset_model!
+bad = DrawKit.build("1층 골조") do
+  box "C1-1", 0,    0, 0,    500,  500,  3000
+  box "C1-2", 5000, 0, 0,    500,  500,  3000
+  box "G1-1", 500,  0, 2400, 4500, 400,  600
+  box "S-1",  0,    0, 3000, 5500, 3000, 150
 end
+check("4개 부재 자동 검증 통과 (EXPECTED 배열 불필요)", bad.empty?)
 
-EXPECTED = PARTS.map { |p| { name: p[:name], origin: [p[:x], p[:y], p[:z]], size: [p[:w], p[:d], p[:h]] } }
-bad = DrawKit.verify(EXPECTED)
-fail_count += 1 unless check("치수표 4개 부재 전부 일치", bad.empty?)
-
-# ---------------------------------------------------------------- 2. 중첩 그룹
-case_title "2. assembly 하위 부재도 verify 대상에 들어오는가"
+# ---------------------------------------------------------------- 2
+title "2. group 중첩"
 Sketchup.reset_model!
-asm = nil
-DrawKit.build("중첩 테스트") do |_m|
-  asm = DrawKit.assembly("STR-1층")
-  DrawKit.box(name: "C3-기둥", x: 0, y: 0, z: 0, w: 400, d: 400, h: 2800, parent: asm)
-  DrawKit.box(name: "G2-작은보", x: 400, y: 0, z: 2300, w: 3000, d: 300, h: 500, parent: asm)
+bad = DrawKit.build("중첩") do
+  group "STR-1층" do
+    box "C2-1", 0,   0, 0,    400,  400, 2800
+    box "G2-1", 400, 0, 2300, 3000, 300, 500
+  end
 end
-exp2 = [
-  { name: "C3-기둥",   origin: [0, 0, 0],      size: [400, 400, 2800] },
-  { name: "G2-작은보", origin: [400, 0, 2300], size: [3000, 300, 500] }
-]
-bad2 = DrawKit.verify(exp2)
-fail_count += 1 unless check("중첩 부재 2개 탐색 및 일치", bad2.empty?)
+check("assembly 하위 부재 검증 통과", bad.empty?)
+check("최상위+하위 그룹 3개 존재", DrawKit.rows.size == 3)
 
-# ---------------------------------------------------------------- 3. 불일치 탐지
-case_title "3. 치수가 틀리면 잡아내는가 (의도적 오류)"
+# ---------------------------------------------------------------- 3
+title "3. 부재명 중복은 생성 전에 차단"
 Sketchup.reset_model!
-DrawKit.build("오류 테스트") { |_m| DrawKit.box(name: "C4", x: 0, y: 0, z: 0, w: 400, d: 400, h: 2800) }
-bad3 = DrawKit.verify([{ name: "C4", origin: [0, 0, 0], size: [400, 400, 3000] }])
-fail_count += 1 unless check("높이 200mm 차이를 검출", bad3.size == 1)
-
-# ---------------------------------------------------------------- 4. 누락 탐지
-case_title "4. 치수표에 있는데 생성 안 된 부재를 잡아내는가"
-bad4 = DrawKit.verify([{ name: "존재하지않는부재", origin: [0, 0, 0], size: [100, 100, 100] }])
-fail_count += 1 unless check("미생성 부재 검출", bad4.size == 1)
-
-# ---------------------------------------------------------------- 5. 원기둥
-case_title "5. cylinder 바운딩박스 (반지름 300 -> 지름 600mm)"
-Sketchup.reset_model!
-DrawKit.build("원기둥 테스트") { |_m| DrawKit.cylinder(name: "PILE-1", x: 1000, y: 1000, z: 0, r: 300, h: 2000, segments: 96) }
-rows = DrawKit.audit
-w = rows.first[:size][0]
-fail_count += 1 unless check("폭 600mm 근사 (실측 #{w}mm)", (w - 600).abs <= 2.0)
-fail_count += 1 unless check("높이 2000mm", (rows.first[:size][2] - 2000).abs <= 0.5)
-
-# ---------------------------------------------------------------- 6. 예외 롤백
-case_title "6. 오류 발생 시 abort_operation 으로 롤백되는가"
-Sketchup.reset_model!
+blocked = false
 begin
-  DrawKit.build("롤백 테스트") do |_m|
-    DrawKit.box(name: "정상", x: 0, y: 0, z: 0, w: 100, d: 100, h: 100)
-    DrawKit.box(name: "높이0", x: 0, y: 0, z: 0, w: 100, d: 100, h: 0)   # 의도적 오류
+  DrawKit.build("중복") do
+    box "C1", 0,    0, 0, 400, 400, 2800
+    box "C1", 5000, 0, 0, 400, 400, 2800
   end
 rescue ArgumentError => e
-  puts "  예외 메시지: #{e.message}"
+  blocked = true
+  puts "  차단 메시지: #{e.message}"
 end
-ops = Sketchup.active_model.operations.map(&:first)
-fail_count += 1 unless check("abort_operation 호출됨", ops.include?(:abort))
-fail_count += 1 unless check("commit_operation 미호출", !ops.include?(:commit))
+check("중복 이름 차단됨", blocked)
+check("롤백되어 그룹 0개", DrawKit.rows.empty?)
 
-# ---------------------------------------------------------------- 7. 이름 중복
-case_title "7. 그룹 이름이 중복되면 경고하는가"
+# ---------------------------------------------------------------- 4
+title "4. 크기 0 입력 차단 + 롤백"
 Sketchup.reset_model!
-DrawKit.build("중복 테스트") do |_m|
-  DrawKit.box(name: "C1", x: 0,    y: 0, z: 0, w: 400, d: 400, h: 2800)
-  DrawKit.box(name: "C1", x: 5000, y: 0, z: 0, w: 400, d: 400, h: 2800)
+ops_before = nil
+begin
+  DrawKit.build("영치수") do
+    box "정상", 0, 0, 0, 100, 100, 100
+    box "높이0", 0, 0, 0, 100, 100, 0
+  end
+rescue ArgumentError
+  ops_before = Sketchup.active_model.operations.map(&:first)
 end
-dup = DrawKit.verify([{ name: "C1", origin: [0, 0, 0], size: [400, 400, 2800] }])
-fail_count += 1 unless check("중복 이름 경고 발생", dup.any? { |b| b[:reason].to_s.include?("중복") })
+check("abort_operation 호출", ops_before.include?(:abort))
+check("commit_operation 미호출", !ops_before.include?(:commit))
 
-# ---------------------------------------------------------------- 8. 저장
-case_title "8. save_as"
+# ---------------------------------------------------------------- 5
+title "5. 원기둥 (다각형 근사 허용오차 자동 적용)"
 Sketchup.reset_model!
-DrawKit.build("저장 테스트") { |_m| DrawKit.box(name: "A", x: 0, y: 0, z: 0, w: 10, d: 10, h: 10) }
-DrawKit.save_as("C:/sketchup/test.skp")
-fail_count += 1 unless check("경로 기록됨", Sketchup.active_model.saved_path == "C:/sketchup/test.skp")
+bad = DrawKit.build("원기둥") do
+  cyl "PILE-1", 1000, 1000, 0, 300, 2000, segments: 24
+end
+check("세그먼트 24 에서도 오탐 없음", bad.empty?)
+w = DrawKit.rows.first[:size][0]
+check("폭 600mm 근사 (실측 #{w}mm)", (w - 600).abs <= 12.0)
+
+# ---------------------------------------------------------------- 6
+title "6. 임의 단면 압출 (L형)"
+Sketchup.reset_model!
+bad = DrawKit.build("L형") do
+  shape "L-1", [[0, 0], [600, 0], [600, 200], [200, 200], [200, 600], [0, 600]], 0, 3000
+end
+check("L형 압출 검증 통과", bad.empty?)
+
+# ---------------------------------------------------------------- 7
+title "7. 검증 통과 시에만 저장"
+Sketchup.reset_model!
+DrawKit.build("저장", save_to: "C:/sketchup/ok.skp") { box "A", 0, 0, 0, 10, 10, 10 }
+check("통과 시 저장됨", Sketchup.active_model.saved_path == "C:/sketchup/ok.skp")
+
+# ---------------------------------------------------------------- 8
+title "8. 치수가 실제와 다르면 검출 (검증 로직 자체 확인)"
+Sketchup.reset_model!
+DrawKit.build("검출", verify: false) { box "C4", 0, 0, 0, 400, 400, 2800 }
+bad = DrawKit.verify([{ name: "C4", origin: [0, 0, 0], size: [400, 400, 3000] }])
+check("높이 200mm 차이 검출", bad.size == 1)
+bad = DrawKit.verify([{ name: "없는부재", origin: [0, 0, 0], size: [1, 1, 1] }])
+check("미생성 부재 검출", bad.size == 1)
 
 puts "\n" + "=" * 60
-puts fail_count.zero? ? "전체 통과" : "실패 #{fail_count}건"
-exit(fail_count.zero? ? 0 : 1)
+puts $fails.zero? ? "전체 통과" : "실패 #{$fails}건"
+exit($fails.zero? ? 0 : 1)

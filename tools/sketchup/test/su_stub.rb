@@ -81,6 +81,8 @@ module Sketchup
     def to_a; @items; end
     def grep(klass); @items.grep(klass); end
     def size; @items.size; end
+    def snapshot; @items.dup; end
+    def restore!(snap); @items = snap; end
 
     def add_group
       g = Group.new
@@ -140,9 +142,25 @@ module Sketchup
     def entities; @entities; end
     def active_entities; @entities; end
     def options; @options; end
-    def start_operation(name, _disable_ui = false); @operations << [:start, name]; true; end
-    def commit_operation; @operations << [:commit]; true; end
-    def abort_operation;  @operations << [:abort];  true; end
+    # 실제 SketchUp 과 동일하게, abort 시 연산 시작 시점으로 되돌린다.
+    def start_operation(name, _disable_ui = false)
+      @operations << [:start, name]
+      @snapshot = @entities.snapshot
+      true
+    end
+
+    def commit_operation
+      @operations << [:commit]
+      @snapshot = nil
+      true
+    end
+
+    def abort_operation
+      @operations << [:abort]
+      @entities.restore!(@snapshot) if @snapshot
+      @snapshot = nil
+      true
+    end
     def save(path); @saved_path = path; true; end
   end
 
